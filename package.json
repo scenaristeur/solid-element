@@ -3,11 +3,14 @@
   "main": "solid-element.js",
   "dependencies": {
     "@polymer/lit-element": "^0.6.2",
-    "@polymer/polymer": "^3.0.0"
+    "@polymer/paper-button": "^3.0.1",
+    "@polymer/paper-input": "^3.0.1",
+    "@polymer/polymer": "^3.0.0",
+    "solid-auth-client": "^2.2.10"
   },
   "devDependencies": {
     "@polymer/iron-demo-helpers": "^3.0.0-pre.19",
-    "@webcomponents/webcomponentsjs": "^2.0.0",
+    "@webcomponents/webcomponentsjs": "^2.1.3",
     "wct-browser-legacy": "^1.0.2"
   }
 }
