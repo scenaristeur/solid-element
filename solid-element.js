@@ -59,8 +59,10 @@ class SolidElement extends LitElement {
 
 
       if (loggedIn){
+        console.log("LOGGED IN")
         this._solidLoginBtn.style.visibility="hidden";
         this._solidLogoutBtn.style.visibility="visible";
+        console.log(session.webId)
         /*  this._card.style.visibility="visible";
         this._inputSolid.value = session.webId;
         console.log(session.webId)
@@ -76,16 +78,30 @@ class SolidElement extends LitElement {
       }else{
         this._solidLoginBtn.style.visibility="visible";
         this._solidLogoutBtn.style.visibility="hidden";
+        console.log("LOGGED OUT")
         /*  this._card.style.visibility="hidden";
         this._inputSolid.value = "";*/
       }
     });
 
-
-
-
-
   }
+
+
+  _solid_login(e){
+    console.log("login");
+    // Log the user in and out on click
+    const popupUri = '../popup.html';
+    solid.auth.popupLogin({ popupUri });
+  }
+
+  _solid_logout(e){
+    console.log("logout");
+    solid.auth.logout();
+    //  this._clearSolidResults();
+  }
+
 }
+
+
 
 window.customElements.define('solid-element', SolidElement);
