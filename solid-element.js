@@ -4,7 +4,7 @@ import  '../node_modules/solid-auth-client/dist-lib/solid-auth-client.bundle.js'
 import '../node_modules/@polymer/paper-input/paper-input.js';
 import '../node_modules/@polymer/paper-button/paper-button.js';
 import { solidLoginPopup, solidSignOut, saveOldUserData, getOldUserData } from '../service/solid-auth-service.js'
-//import {  } from '../service/rdf-service.js'
+//import { updateProfile } from '../service/rdf-service.js'
 import  '../lib/rdflib.min.js'
 
 /**
@@ -73,7 +73,7 @@ class SolidElement extends LitElement {
     </td>
     </tr>
     </table>
-    <paper-button class="wide-button profile-save-button" @click="${(e) =>  this._solid_submit(e)}">Submit</paper-button>
+    <paper-button raised @click="${() =>  this.onSubmit()}">Submit</paper-button>
     </div>
 
 
@@ -201,53 +201,267 @@ class SolidElement extends LitElement {
   };
 
   getValueFromVcard(node, webId) {
-  return this.getValueFromNamespace(node, this.VCARD, webId);
-};
+    return this.getValueFromNamespace(node, this.VCARD, webId);
+  };
 
-getValueFromNamespace(node, namespace, webId) {
-  const store = this.store.any($rdf.sym(webId || this.session.webId), namespace(node));
-  if (store) {
-    return store.value;
-  }
-  return '';
-}
-
-getAddress() {
-  const linkedUri = this.getValueFromVcard('hasAddress');
-
-  if (linkedUri) {
-    return {
-      locality: this.getValueFromVcard('locality', linkedUri),
-      country_name: this.getValueFromVcard('country-name', linkedUri),
-      region: this.getValueFromVcard('region', linkedUri),
-      street: this.getValueFromVcard('street-address', linkedUri),
-    };
-  }
-
-  return {};
-};
-
-//Function to get email. This returns only the first email, which is temporary
-getEmail() {
-  const linkedUri = this.getValueFromVcard('hasEmail');
-
-  if (linkedUri) {
-    return this.getValueFromVcard('value', linkedUri).split('mailto:')[1];
-  }
-
-  return '';
-}
-
-//Function to get phone number. This returns only the first phone number, which is temporary. It also ignores the type.
-getPhone () {
-  const linkedUri = this.getValueFromVcard('hasTelephone');
-
-  if(linkedUri) {
-    return this.getValueFromVcard('value', linkedUri).split('tel:+')[1];
-  }else{
+  getValueFromNamespace(node, namespace, webId) {
+    const store = this.store.any($rdf.sym(webId || this.session.webId), namespace(node));
+    if (store) {
+      return store.value;
+    }
     return '';
   }
-};
+
+  getAddress() {
+    const linkedUri = this.getValueFromVcard('hasAddress');
+
+    if (linkedUri) {
+      return {
+        locality: this.getValueFromVcard('locality', linkedUri),
+        country_name: this.getValueFromVcard('country-name', linkedUri),
+        region: this.getValueFromVcard('region', linkedUri),
+        street: this.getValueFromVcard('street-address', linkedUri),
+      };
+    }
+
+    return {};
+  };
+
+  //Function to get email. This returns only the first email, which is temporary
+  getEmail() {
+    const linkedUri = this.getValueFromVcard('hasEmail');
+
+    if (linkedUri) {
+      return this.getValueFromVcard('value', linkedUri).split('mailto:')[1];
+    }
+
+    return '';
+  }
+
+  //Function to get phone number. This returns only the first phone number, which is temporary. It also ignores the type.
+  getPhone () {
+    const linkedUri = this.getValueFromVcard('hasTelephone');
+
+    if(linkedUri) {
+      return this.getValueFromVcard('value', linkedUri).split('tel:+')[1];
+    }else{
+      return '';
+    }
+  };
+
+
+  async onSubmit () {
+    var app = this;
+    this.cardForm = {}
+    this.cardForm.fn = this.shadowRoot.getElementById('fn').value;
+    this.cardForm.phone = this.shadowRoot.getElementById('phone').value;
+    this.cardForm.role = this.shadowRoot.getElementById('role').value;
+    this.cardForm.email = this.shadowRoot.getElementById('email').value;
+    this.cardForm.company = this.shadowRoot.getElementById('company').value;
+    /*this.cardForm.address.locality = this.shadowRoot.getElementById('locality');
+    this.cardForm.address.country_name = this.shadowRoot.getElementById('country_name');
+    this.cardForm.address.region = this.shadowRoot.getElementById('region');
+    this.cardForm.address.street = this.shadowRoot.getElementById('street');*/
+    console.log(this.cardForm)
+    console.log(this.profile)
+    //  if (!this.cardForm.invalid) {
+    try {
+      await this.updateProfile(this.cardForm);
+      localStorage.setItem('oldProfileData', JSON.stringify(this.profile));
+    } catch (err) {
+      console.log(`Error: ${err}`);
+    }
+    //  }
+  }
+
+  async updateProfile (form) {
+    console.log(form)
+    const me = $rdf.sym(this.session.webId);
+    const doc = $rdf.NamedNode.fromValue(this.session.webId.split('#')[0]);
+    const data = this.transformDataForm(form, me, doc);
+    console.log(data);
+    //Update existing values
+    if(data.insertions.length > 0 || data.deletions.length > 0) {
+      console.log(this.updateManager)
+      console.log(this.session);
+      this.updateManager.update(data.deletions, data.insertions, (response, success, message) => {
+        if(success) {
+        //  this.toastr.success('Your Solid profile has been successfully updated', 'Success!');
+        console.log('Your Solid profile has been successfully updated', 'Success!');
+          //form.form.markAsPristine();
+          //form.form.markAsTouched();
+        } else {
+        //  this.toastr.error('Message: '+ message, 'An error has occurred');
+          console.log('Message: '+ message, 'An error has occurred');
+        }
+      });
+    }
+  };
+
+
+  transformDataForm (form, me, doc) {
+    const insertions = [];
+    const deletions = [];
+    console.log(form)
+    const fields = Object.keys(form);
+    const oldProfileData = JSON.parse(localStorage.getItem('oldProfileData')) || {};
+
+    // We need to split out into three code paths here:
+    // 1. There is an old value and a new value. This is the update path
+    // 2. There is no old value and a new value. This is the insert path
+    // 3. There is an old value and no new value. Ths is the delete path
+    // These are separate codepaths because the system needs to know what to do in each case
+    fields.map(field => {
+
+      let predicate = this.VCARD(this.getFieldName(field));
+      let subject = this.getUriForField(field, me);
+      let why = doc;
+
+      let fieldValue = this.getFieldValue(form, field);
+      let oldFieldValue = this.getOldFieldValue(field, oldProfileData);
+      console.log("COMPARE ", fieldValue, oldFieldValue)
+      // if there's no existing home phone number or email address, we need to add one, then add the link for hasTelephone or hasEmail
+      if(!oldFieldValue && fieldValue && (field === 'phone' || field==='email')) {
+        console.log("ADD LINKED FIELD ",field, fieldValue);
+        this.addNewLinkedField(field, insertions, predicate, fieldValue, why, me);
+      } else {
+
+        //Add a value to be updated
+        if (oldProfileData[field] && form[field] && oldFieldValue != fieldValue){ //&& !form.controls[field].pristine) {
+          console.log("UPDATE ",field, oldFieldValue, fieldValue);
+          deletions.push($rdf.st(subject, predicate, oldFieldValue, why));
+          insertions.push($rdf.st(subject, predicate, fieldValue, why));
+        }
+
+        //Add a value to be deleted
+        else if (oldProfileData[field] && !form[field] ){ //&& !form.controls[field].pristine) {
+            console.log("DELETE ",field, oldFieldValue);
+          deletions.push($rdf.st(subject, predicate, oldFieldValue, why));
+        }
+
+        //Add a value to be inserted
+        else if (!oldProfileData[field] && form[field] ){ //&& !form.controls[field].pristine) {
+            console.log("INSERT ",field, fieldValue);
+          insertions.push($rdf.st(subject, predicate, fieldValue, why));
+        }
+      }
+    });
+
+    return {
+      insertions: insertions,
+      deletions: deletions
+    };
+  };
+
+  addNewLinkedField(field, insertions, predicate, fieldValue, why, me) {
+    //Generate a new ID. This id can be anything but needs to be unique.
+    let newId = field + ':' + Date.now();
+
+    //Get a new subject, using the new ID
+    let newSubject = $rdf.sym(this.session.webId.split('#')[0] + '#' + newId);
+
+    //Set new predicate, based on email or phone fields
+    let newPredicate = field === 'phone' ? $rdf.sym(this.VCARD('hasTelephone')) : $rdf.sym(this.VCARD('hasEmail'));
+
+    //Add new phone or email to the pod
+    insertions.push($rdf.st(newSubject, predicate, fieldValue, why));
+
+    //Set the type (defaults to Home/Personal for now) and insert it into the pod as well
+    //Todo: Make this dynamic
+    let type = field === 'phone' ? $rdf.literal('Home') : $rdf.literal('Personal');
+    insertions.push($rdf.st(newSubject, this.VCARD('type'), type, why));
+
+    //Add a link in #me to the email/phone number (by id)
+    insertions.push($rdf.st(me, newPredicate, newSubject, why));
+  }
+
+  getUriForField(field, me) {
+    let uriString;
+    let uri;
+
+    switch(field) {
+      case 'phone':
+      uriString = this.getValueFromVcard('hasTelephone');
+      if(uriString) {
+        uri = $rdf.sym(uriString);
+      }
+      break;
+      case 'email':
+      uriString = this.getValueFromVcard('hasEmail');
+      if(uriString) {
+        uri = $rdf.sym(uriString);
+      }
+      break;
+      default:
+      uri = me;
+      break;
+    }
+
+    return uri;
+  }
+
+  /**
+  * Extracts the value of a field of a NgForm and converts it to a $rdf.NamedNode
+  * @param {NgForm} form
+  * @param {string} field The name of the field that is going to be extracted from the form
+  * @return {RdfNamedNode}
+  */
+  getFieldValue(form, field) {
+    let fieldValue;
+
+    if(!form[field]) {
+      return;
+    }
+
+    switch(field) {
+      case 'phone':
+      fieldValue = $rdf.sym('tel:+'+form[field]);
+      break;
+      case 'email':
+      fieldValue = $rdf.sym('mailto:'+form[field]);
+      break;
+      default:
+      fieldValue = form[field];
+      break;
+    }
+
+    return fieldValue;
+  }
+
+  getOldFieldValue(field, oldProfile) {
+    let oldValue;
+
+    if(!oldProfile || !oldProfile[field]) {
+      return;
+    }
+
+    switch(field) {
+      case 'phone':
+      oldValue = $rdf.sym('tel:+'+oldProfile[field]);
+      break;
+      case 'email':
+      oldValue = $rdf.sym('mailto:'+oldProfile[field]);
+      break;
+      default:
+      oldValue = oldProfile[field];
+      break;
+    }
+
+    return oldValue;
+  }
+
+  getFieldName(field) {
+    switch (field) {
+      case 'company':
+      return 'organization-name';
+      case 'phone':
+      case 'email':
+      return 'value';
+      default:
+      return field;
+    }
+  }
+
 
 
 }
